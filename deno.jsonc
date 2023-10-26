@@ -1,0 +1,9 @@
+{
+	"lock": false,
+	"tasks": {
+		"dev": "deno run ./src/mod.ts",
+		"test": "deno test",
+		"npm": "deno run --allow-env --allow-read --allow-write --allow-run ./scripts/npm.ts",
+		"build": "deno run --allow-env --allow-read --allow-run ./scripts/build.ts"
+	}
+}
