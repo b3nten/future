@@ -5,7 +5,7 @@ type PromiseCallback<T, U> = (
   resolve: Resolve<T>,
   reject: Reject<U>,
 ) => void | (() => void);
-type FutureStatus = "pending" | "resolved" | "rejected"
+type FutureStatus = "pending" | "resolved" | "rejected";
 
 function isFn(fn: unknown): fn is Function {
   return typeof fn === "function";
@@ -18,7 +18,7 @@ export default class Future<T, U = unknown> {
   constructor(callback: PromiseCallback<T, U>, { lazy } = { lazy: true }) {
     this.#callback = callback;
     this.#status = "pending";
-    this.#value = undefined;
+    this.value = undefined;
     this.#rejection = undefined;
     if (!lazy) {
       this.#createPromise();
@@ -27,7 +27,6 @@ export default class Future<T, U = unknown> {
 
   #callback: PromiseCallback<T, U>;
   #status: FutureStatus;
-  #value: T | undefined;
   #rejection: U | undefined;
   #promise: Promise<T> | undefined;
   #promise_resolve: ((result: T) => void) | undefined;
@@ -62,9 +61,7 @@ export default class Future<T, U = unknown> {
   get status(): FutureStatus {
     return this.#status;
   }
-  get value(): T | undefined {
-    return this.#value;
-  }
+  value: T | undefined;
   get rejection(): U | "Cancelled" | undefined {
     return this.#rejection;
   }
@@ -122,4 +119,8 @@ export default class Future<T, U = unknown> {
     }, { lazy: false });
     return newFuture;
   };
+
+  public catch = (onrejected?: (reason: U) => any) => {
+    return this.then(undefined, onrejected);
+  }
 }
