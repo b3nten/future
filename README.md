@@ -22,7 +22,24 @@ Future is a wrapper around promises that don't begin resolving until they are ei
 
 Futures allow you to inspect and even set it's value from the outside. You can create futures, set a default value, await it sometime in the future and then resolve it or reject it from the outside based on your control flow. You can return a cleanup function from a future that is called when the future resolves or rejects. For example, you can create a future that calls `fetch` and returns a cleanup that aborts the fetch call. If your data dependencies change you can resolve/reject the future which automatically aborts the fetch.
 
-#### Example:
+#### Example
+
+```typescript
+const fetcher = new Future<Data, string>(async (resolve, reject) => {
+  const controller = new AbortController();
+  const res = await fetch(`/api/${pathname}`, { signal: controller.signal })
+  if(!res.ok) reject("No data found.")
+  const data = await res.json()
+  resolve(data)
+  return () => controller.abort()
+})
+
+onNewPathname(() => {
+  fetcher.resolve() // Cancels promise, resolves with `undefined`
+})
+```
+
+#### API:
 
 ```typescript
 const future = new Future<string, Error>((resolve, reject) => {

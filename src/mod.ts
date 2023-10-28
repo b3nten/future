@@ -124,3 +124,10 @@ export default class Future<T, U = unknown> {
     return this.then(undefined, onrejected);
   }
 }
+
+const f = new Future(async (resolve, reject) => {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  resolve(1);
+})
+
+console.log(await f)
