@@ -1,106 +1,125 @@
 type Resolve<T> = (result: T) => void;
 type Reject<U> = (reason: U) => void;
-type Cancel = () => void;
 
 type PromiseCallback<T, U> = (
   resolve: Resolve<T>,
   reject: Reject<U>,
-  cancel: Cancel,
-) => void;
+) => void | (() => void);
+type FutureStatus = "pending" | "resolved" | "rejected"
 
-type FutureStatus = "pending" | "resolved" | "rejected" | "cancelled";
+function isFn(fn: unknown): fn is Function {
+  return typeof fn === "function";
+}
 
 /**
  * A promise that can be resolved or rejected from the outside.
  */
-
 export default class Future<T, U = unknown> {
-  constructor(callback: PromiseCallback<T, U>) {
+  constructor(callback: PromiseCallback<T, U>, { lazy } = { lazy: true }) {
     this.#callback = callback;
     this.#status = "pending";
     this.#value = undefined;
     this.#rejection = undefined;
-    this.#promise = new Promise<T>((_resolve, _reject) => {
-      this.resolve = (result: T) => {
-        this.#value = result;
-        this.#status = "resolved";
-        _resolve(result);
-      };
-      this.reject = (reason: U) => {
-        this.#rejection = reason;
-        this.#status = "rejected";
-        _reject(reason);
-      };
-      this.#callback(this.resolve, this.reject, this.cancel);
-    });
-    this.then = this.#promise.then.bind(this.#promise);
-    this.catch = this.#promise.catch.bind(this.#promise);
-    this.finally = this.#promise.finally.bind(this.#promise);
+    if (!lazy) {
+      this.#createPromise();
+    }
   }
 
   #callback: PromiseCallback<T, U>;
   #status: FutureStatus;
   #value: T | undefined;
   #rejection: U | undefined;
-  #promise: Promise<T>;
+  #promise: Promise<T> | undefined;
+  #promise_resolve: ((result: T) => void) | undefined;
+  #promise_reject: ((reason: U) => void) | undefined;
+  #cleanup?: void | (() => void);
+
+  #createPromise() {
+    this.#promise = new Promise<T>((resolve, reject) => {
+      this.#promise_resolve = resolve;
+      this.#promise_reject = reject;
+    });
+    this.#cleanup = this.#callback(this.resolve, this.reject);
+  }
+
+  #resolve(result: any) {
+    if (this.#status !== "pending") return;
+    this.#status = "resolved";
+    if (this.#promise_resolve) this.#promise_resolve(result);
+    else this.#promise = Promise.resolve(result);
+    isFn(this.#cleanup) && this.#cleanup();
+  }
+
+  #reject(reason: U) {
+    if (this.#status !== "pending") return;
+    this.#rejection = reason;
+    this.#status = "rejected";
+    if (this.#promise_reject) this.#promise_reject(reason);
+    else this.#promise = Promise.reject(reason);
+    isFn(this.#cleanup) && this.#cleanup();
+  }
 
   get status(): FutureStatus {
     return this.#status;
   }
-
   get value(): T | undefined {
     return this.#value;
   }
-
-  get rejection(): U | undefined {
+  get rejection(): U | "Cancelled" | undefined {
     return this.#rejection;
   }
-
   get pending(): boolean {
     return this.#status === "pending";
   }
-
   get rejected(): boolean {
     return this.#status === "rejected";
   }
-
   get resolved(): boolean {
     return this.#status === "resolved";
   }
-
-  public reject: Reject<U> = () => {
-    throw new Error("Uninitialized");
+  public resolve: Resolve<T> = (value: T) => {
+    this.#resolve(value);
+  };
+  public reject: Reject<U> = (reason: U) => {
+    this.#reject(reason);
+  };
+  public realize = () => {
+    if (!this.#promise) {
+      this.#createPromise();
+    }
+    return this;
   };
 
-  public resolve: Resolve<T> = () => {
-    throw new Error("Uninitialized");
+  public then = (
+    onfulfilled?: (value: T) => T | Promise<T>,
+    onrejected?: (reason: U) => any,
+  ) => {
+    if (!this.#promise) {
+      this.#createPromise();
+    }
+    const newFuture = new Future<unknown>((resolve, reject) => {
+      this.#promise?.then((result) => {
+        if (isFn(onfulfilled)) {
+          try {
+            resolve(onfulfilled(result));
+          } catch (err) {
+            reject(err);
+          }
+        } else {
+          resolve(result);
+        }
+      }, (rejection) => {
+        if (isFn(onrejected)) {
+          try {
+            resolve(onrejected(rejection));
+          } catch (err) {
+            reject(err);
+          }
+        } else {
+          reject(rejection);
+        }
+      });
+    }, { lazy: false });
+    return newFuture;
   };
-
-  public cancel(): void {}
-
-  public then: Promise<T>["then"];
-  public catch: Promise<T>["catch"];
-  public finally: Promise<T>["finally"];
 }
-
-const f1 = new Future((resolve, reject) => {
-  setTimeout(() => {
-    resolve("Hello");
-  }, 1000);
-});
-
-const f2 = new Future((resolve, reject) => {
-  setTimeout(() => {
-    resolve("World");
-  }, 2000);
-});
-
-const f3 = new Promise((resolve, reject) => {
-  setTimeout(() => {
-    reject("Error");
-  }, 3000);
-});
-
-await Promise.all([f1, f2, f3]).then(([f1, f2, f3]) => {
-  console.log(f1, f2, f3);
-});
